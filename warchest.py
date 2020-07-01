@@ -22,10 +22,27 @@ env["NODE_ENV"] = network
 
 
 def run():
+    ping_contract()
     are_we_validator()
     next_slot_price = get_next_slot_price()
     my_bid = get_current_bid()
     adapt_stake(my_bid, next_slot_price)
+
+
+def ping_contract():
+    try:
+        subprocess.check_output(
+            [f"near call {stake_pool_id} ping --accountId {accound_id}"],
+            shell=True,
+            env=env,
+            stderr=subprocess.STDOUT,
+        ).decode('UTF-8')
+        logging.info(f"Successfully ping contract {stake_pool_id}")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Pinged contract {stake_pool_id}")
+        logging.error("Status : FAIL", e.returncode, e.output)
+        # FIXME notify the user that something went wrong
+        sys.exit()
 
 
 def are_we_validator():
@@ -45,17 +62,19 @@ def are_we_validator():
 def get_next_slot_price():
     try:
         validator_output = subprocess.check_output(
-            ["near", "proposals"],
-            env=env
+            ["near proposals"],
+            shell=True,
+            env=env,
+            stderr=subprocess.STDOUT,
         ).decode('UTF-8')
-    except Exception as e:
+    except subprocess.CalledProcessError as e:
         logging.error("Getting the next slot price failed:")
-        logging.error(e)
+        logging.error("Status : FAIL", e.returncode, e.output)
         # FIXME notify the user that something went wrong
         sys.exit()
     next_slot_price_string = validator_output.split("seat price = ")[1].split(")")[0]
     # Make sure slot price is in the correct format and in the unit of yocto near
-    next_slot_price = int(next_slot_price_string.replace(",", ""))*10**24
+    next_slot_price = int(next_slot_price_string.replace(",", "")) * 10 ** 24
     logging.info(f"The next slotprice will most likely be {next_slot_price} yocto nears")
     return next_slot_price
 
@@ -63,7 +82,7 @@ def get_next_slot_price():
 def get_current_bid():
     try:
         locked = subprocess.check_output(
-            [f"near proposals | grep {stake_pool_id}"],
+            ["near proposals"],
             shell=True,
             env=env
         ).decode('UTF-8')
@@ -72,7 +91,19 @@ def get_current_bid():
         logging.error(e)
         # FIXME notify the user that something went wrong
         sys.exit()
-    locked_amount = int(locked.split("|")[3].replace(",", "").replace(" ", ""))*10**24
+    # Getting the locked amount of our validator.
+    # String manipulation will raise an Index error if our validator is not in the list
+    try:
+        locked_amount = int(
+            locked
+                .split(stake_pool_id)[1]
+                .split("|")[1]
+                .split("=>")[0]
+                .replace(",", "")
+                .replace(" ", "")
+        ) * 10 ** 24
+    except IndexError:
+        locked_amount = 0
     logging.info(f"{stake_pool_id} has currently {locked_amount} bid in auction")
     return locked_amount
 
@@ -95,7 +126,8 @@ def reduce_stake(my_stake, next_slot_price):
     amount_to_unstake = int(my_stake - (next_slot_price * seat_price_percentage))
     try:
         subprocess.check_output(
-            [f'near call {stake_pool_id} unstake \'{{"amount": "{amount_to_unstake}"}}\' --accountId {accound_id}'],
+            [
+                f'near call {stake_pool_id} unstake \'{{"amount": "{amount_to_unstake}"}}\' --accountId {accound_id}'],
             env=env,
             shell=True
         ).decode('UTF-8')
@@ -126,7 +158,7 @@ def increase_stake(my_stake, next_slot_price):
 
 def wait_until_close_to_next_epoch():
     logging.info("Waiting for 10 minutes")
-    time.sleep(10*60)
+    time.sleep(10 * 60)
 
 
 if __name__ == "__main__":
