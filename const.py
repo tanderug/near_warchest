@@ -1,9 +1,9 @@
 # The stake pool id that should be managed
-stake_pool_id = "stakeing.arno_nym.betanet"
+stake_pool_id = "get_rich"
 
 # Your account id with funds
 # NOTE the bot requires you to already have near deposited to the stake pool
-accound_id = "arno_nym.betanet"
+accound_id = "tanderug5.betanet"
 
 # The network to use - Shouldn't be changed
 network = "betanet"
